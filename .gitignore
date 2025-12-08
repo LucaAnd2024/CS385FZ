@@ -1,0 +1,58 @@
+# ===== OS / Editor =====
+.DS_Store
+.idea/
+.vscode/
+*.iml
+
+# ===== Root misc =====
+*.log
+
+# ===== React Native (Mynote_RN) =====
+Mynote_RN/node_modules/
+Mynote_RN/npm-debug.log*
+Mynote_RN/yarn-debug.log*
+Mynote_RN/yarn-error.log*
+Mynote_RN/.expo/
+Mynote_RN/.env
+Mynote_RN/.env.*
+
+# Metro / Jest cache
+Mynote_RN/.metro-health-check*
+Mynote_RN/.cache/
+
+# Android build
+Mynote_RN/android/.gradle/
+Mynote_RN/android/build/
+Mynote_RN/android/app/build/
+Mynote_RN/android/local.properties
+
+# iOS build / Pods
+Mynote_RN/ios/build/
+Mynote_RN/ios/Pods/
+Mynote_RN/ios/Podfile.lock
+
+# Ruby bundler (if used for iOS tooling)
+Mynote_RN/vendor/bundle/
+
+# ===== Python Backend (MynoteBack) =====
+MynoteBack/__pycache__/
+MynoteBack/**/*.pyc
+MynoteBack/.venv/
+MynoteBack/venv/
+
+# SQLite / local db
+MynoteBack/*.db
+MynoteBack/app.db
+
+# runtime logs
+MynoteBack/*.log
+MynoteBack/server.log
+MynoteBack/service.log
+MynoteBack/service_output.log
+
+# secrets/config
+MynoteBack/.env
+MynoteBack/.env.*
+# Old iOS project (do not track)
+Mynote-iOS/
+Mynote.xcworkspace/
