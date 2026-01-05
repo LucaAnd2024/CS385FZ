@@ -21,7 +21,7 @@ def create_score(db: Session, score: Score) -> Tuple[Optional[ScoreRecord], Opti
     exists = get_score_by_uuid(db, uuid)
     if exists:
         return None, "Score already exists"
-    rec = ScoreRecord(uuid=uuid, title=score.title, data=score.model_dump())
+    rec = ScoreRecord(uuid=uuid, title=score.title, data=score.model_dump(mode='json'))
     db.add(rec)
     db.commit()
     db.refresh(rec)
@@ -33,7 +33,7 @@ def update_score(db: Session, uuid: str, score: Score) -> Optional[ScoreRecord]:
     if not rec:
         return None
     rec.title = score.title
-    rec.data = score.model_dump()
+    rec.data = score.model_dump(mode='json')
     db.commit()
     db.refresh(rec)
     return rec

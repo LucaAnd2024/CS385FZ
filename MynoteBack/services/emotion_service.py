@@ -21,7 +21,7 @@ def get_day_by_date(db: Session, date: str) -> Optional[EmotionDay]:
 
 def upsert_day(db: Session, day_data: EmotionDayData) -> EmotionDay:
     obj = get_day_by_date(db, day_data.date)
-    data_dict = day_data.model_dump()
+    data_dict = day_data.model_dump(mode='json')
     if obj:
         obj.data = data_dict
     else:

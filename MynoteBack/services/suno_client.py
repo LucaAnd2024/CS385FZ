@@ -359,6 +359,36 @@ class SunoClient:
             return False
 
 
+# ... existing code ...
+
+class MockSunoClient:
+    """Mock Suno Client for testing"""
+    def __init__(self, api_key: str = "mock"):
+        self.api_key = api_key
+
+    async def generate_music(self, params: Dict) -> str:
+        logger.info("[MockSunoClient] Generating music with params: " + str(params))
+        # Return a fake task ID
+        return f"mock-task-{int(datetime.utcnow().timestamp())}"
+
+    async def query_task(self, task_id: str) -> Dict:
+        logger.info(f"[MockSunoClient] Querying task {task_id}")
+        # Return fake status
+        return {
+            "taskId": task_id,
+            "status": "succeeded",
+            "musicUrl": "https://cdn.suno.ai/mock-song.mp3",
+            "duration": 120,
+            "createdAt": datetime.utcnow().isoformat(),
+            "finishedAt": datetime.utcnow().isoformat()
+        }
+    
+    async def poll_until_complete(self, task_id: str, max_wait_seconds: int = 300) -> Dict:
+        return await self.query_task(task_id)
+
+    async def health_check(self) -> bool:
+        return True
+
 class SunoClientFactory:
     """Suno 客户端工厂（单例模式）"""
     
@@ -369,16 +399,19 @@ class SunoClientFactory:
     def get_client(cls, api_key: Optional[str] = None) -> SunoClient:
         """
         获取 Suno 客户端实例
-        
-        Args:
-            api_key: API Key（首次调用时必须提供）
-            
-        Returns:
-            SunoClient 实例
         """
+        # Support Mock Mode
+        if os.getenv("MOCK_SUNO", "false").lower() == "true":
+             logger.info("[SunoClientFactory] Using MockSunoClient")
+             return MockSunoClient()
+
         if cls._instance is None:
             if api_key is None:
-                raise ValueError("首次调用必须提供 api_key")
+                # Try to get from env
+                api_key = os.getenv("SUNO_API_KEY")
+                
+            if api_key is None:
+                raise ValueError("首次调用必须提供 api_key (或设置 SUNO_API_KEY 环境变量)")
             
             cls._api_key = api_key
             cls._instance = SunoClient(api_key=api_key)
@@ -388,7 +421,6 @@ class SunoClientFactory:
     
     @classmethod
     def reset(cls):
-        """重置客户端实例（用于测试）"""
         cls._instance = None
         cls._api_key = None
 
