@@ -2,11 +2,62 @@ import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, Image, FlatList, Dimensions, ImageBackground, ActivityIndicator, TouchableOpacity } from 'react-native';
 import { coreApi, Score } from '../services/api';
 
+import { enrichScore } from '../utils/ScoreUtils';
+import { CollectionDataUtils } from '../utils/CollectionDataUtils';
+
+
+
 const { width } = Dimensions.get('window');
 
+type EmotionKey = 'joy' | 'sadness' | 'anger' | 'fear' | 'surprise' | 'digest';
+
+type HomeCard = Score & {
+    emotion?: EmotionKey;
+    createdAt?: string;
+};
+
+const EMOTION_COLOR_MAP: Record<EmotionKey, string> = {
+    joy: '#F9CE5C',
+    sadness: '#87B5FF',
+    anger: '#FF9790',
+    fear: '#E4C0FF',
+    surprise: '#FFAFF1',
+    digest: '#459D93',
+};
+
+const EMOTION_IMAGE_MAP: Record<EmotionKey, any> = {
+    joy: require('../assets/images/MoodMapView_Joy.png'),
+    sadness: require('../assets/images/MoodMapView_Sadness.png'),
+    anger: require('../assets/images/MoodMapView_Anger.png'),
+    fear: require('../assets/images/MoodMapView_Fear .png'),
+    surprise: require('../assets/images/MoodMapView_Surprise.png'),
+    digest: require('../assets/images/MoodMapView_Digest.png'),
+};
+
+const EMOTION_ELLIPSE_MAP: Record<EmotionKey, any> = {
+    joy: require('../assets/images/MoodMapView_Joy_Ellipse.png'),
+    sadness: require('../assets/images/MoodMapView_Sadness_Ellipse.png'),
+    anger: require('../assets/images/MoodMapView_Anger_Ellipse.png'),
+    fear: require('../assets/images/MoodMapView_Fear _Ellipse.png'),
+    surprise: require('../assets/images/MoodMapView_Surprise_Ellipse.png'),
+    digest: require('../assets/images/MoodMapView_Digest_Ellipse.png'),
+};
+
+const MOCK_CARDS: HomeCard[] = [
+    { id: 'mock-1', title: 'C4: Impetuous', createdAt: '2026.01.22', emotion: 'anger', staves: [] },
+    { id: 'mock-2', title: 'Joy of success', createdAt: '2026.01.21', emotion: 'joy', staves: [] },
+    { id: 'mock-3', title: 'Silly statistics', createdAt: '2026.01.20', emotion: 'surprise', staves: [] },
+    { id: 'mock-4', title: 'Song of joy', createdAt: '2026.01.19', emotion: 'joy', staves: [] },
+    { id: 'mock-5', title: 'Tired & sleepy', createdAt: '2026.01.18', emotion: 'digest', staves: [] },
+    { id: 'mock-6', title: 'Sleepy & tired', createdAt: '2026.01.17', emotion: 'digest', staves: [] },
+];
+
+import { useNavigation } from '@react-navigation/native';
+
 const HomeScreen = () => {
-    const [activeTab, setActiveTab] = useState<'emotional' | 'healing'>('emotional');
-    const [scores, setScores] = useState<Score[]>([]);
+    const navigation = useNavigation();
+    const [activeTab, _setActiveTab] = useState<'emotional' | 'healing'>('emotional');
+    const [scores, setScores] = useState<HomeCard[]>([]);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
@@ -15,89 +66,103 @@ const HomeScreen = () => {
 
     const loadData = async () => {
         try {
-            const data = await coreApi.getScores();
+            const response = await coreApi.getScores();
+            const data = response?.data;
             if (Array.isArray(data)) {
-                setScores(data);
+                const filtered = data.filter((item) => item.title !== 'First Test Score');
+                const merged = [...filtered, ...CollectionDataUtils.generateSevenDaysScores()];
+                const seen = new Set<string>();
+                const deduped = merged.filter((item, index) => {
+                    const key = item.id ?? `idx-${index}`;
+                    if (seen.has(key)) {
+                        return false;
+                    }
+                    seen.add(key);
+                    return true;
+                });
+                setScores(deduped);
+            } else {
+                setScores(CollectionDataUtils.generateSevenDaysScores());
             }
         } catch (e) {
             console.error(e);
+            setScores(CollectionDataUtils.generateSevenDaysScores());
+
         } finally {
             setLoading(false);
         }
     };
 
     // Helper to map score to UI assets (placeholder logic)
-    const getCardProps = (score: Score, index: number) => {
-        // Cycle through available images
-        const images = [
-            require('../assets/images/HomeViewSingSong11.png'),
-            require('../assets/images/HomeViewSingSong12.png'),
-            require('../assets/images/HomeViewSingSong13.png'),
-            require('../assets/images/HomeViewSingSong21.png'),
-            require('../assets/images/HomeViewSingSong22.png'),
-            require('../assets/images/HomeViewSingSong23.png')
-        ];
+    const getCardProps = (score: HomeCard) => {
+        const emotion = score.emotion;
+        const imageName = emotion ? EMOTION_IMAGE_MAP[emotion] : EMOTION_IMAGE_MAP.joy;
+        const ellipseImage = emotion ? EMOTION_ELLIPSE_MAP[emotion] : EMOTION_ELLIPSE_MAP.joy;
 
-        // Try to get color from first note, or default
-        let color = "#F197E1";
-        if (score.staves && score.staves.length > 0 && score.staves[0].notes.length > 0) {
+        let color = '#F9CE5C';
+        if (emotion) {
+            color = EMOTION_COLOR_MAP[emotion];
+        } else if (score.staves?.[0]?.notes?.[0]?.colorHex) {
             color = score.staves[0].notes[0].colorHex;
         }
 
         return {
-            imageName: images[index % images.length],
-            color: color,
-            date: score.createdAt ? new Date(score.createdAt).toLocaleDateString() : 'Just Now'
+            imageName,
+            ellipseImage,
+            color,
+            date: score.createdAt ? score.createdAt : 'Just Now',
         };
     };
 
     return (
         <ImageBackground
-            source={require('../assets/images/HomeViewBackground.png')}
+            source={require('../assets/images/HomeViewBackground.jpg')}
             style={styles.container}
             resizeMode="cover"
         >
             <View style={styles.content}>
-                {/* Header with Tab Selector */}
-                <View style={styles.header}>
-                    <TouchableOpacity onPress={() => setActiveTab('emotional')}>
-                        <Text style={[styles.tabTitle, activeTab === 'emotional' && styles.activeTabTitle]}>
-                            情绪乐谱
-                        </Text>
-                        {activeTab === 'emotional' && <View style={styles.activeIndicator} />}
-                    </TouchableOpacity>
 
-                    <TouchableOpacity onPress={() => setActiveTab('healing')} style={{ marginLeft: 20 }}>
-                        <Text style={[styles.tabTitle, activeTab === 'healing' && styles.activeTabTitle]}>
-                            音乐疗愈
-                        </Text>
-                        {activeTab === 'healing' && <View style={styles.activeIndicator} />}
-                    </TouchableOpacity>
-                </View>
 
                 {activeTab === 'emotional' ? (
                     loading ? (
-                        <ActivityIndicator size="large" color="#6F8CF0" style={{ marginTop: 20 }} />
+                        <ActivityIndicator size="large" color="#6F8CF0" style={styles.loadingIndicator} />
                     ) : (
-                        <FlatList
-                            data={scores}
-                            keyExtractor={(item) => item.id || Math.random().toString()}
-                            numColumns={2}
-                            columnWrapperStyle={styles.row}
-                            contentContainerStyle={styles.listContainer}
-                            renderItem={({ item, index }) => {
-                                const props = getCardProps(item, index);
-                                return (
-                                    <View style={styles.cardContainer}>
-                                        <Image source={props.imageName} style={styles.cardImage} />
-                                        <View style={[styles.cardTag, { backgroundColor: props.color }]}>
-                                            <Text style={styles.cardTitle}>{item.title || 'Untitled'}</Text>
+                        <View style={styles.listWrapper}>
+                            <FlatList
+                                data={scores.slice(0, 6)}
+                                keyExtractor={(item) => item.id || Math.random().toString()}
+                                numColumns={3}
+                                columnWrapperStyle={styles.row}
+                                contentContainerStyle={styles.listContainer}
+                                renderItem={({ item }) => {
+                                    const props = getCardProps(item);
+                                    return (
+                                        <View style={styles.cardContainer}>
+                                            <TouchableOpacity
+                                                style={styles.cardTouchable}
+                                                onPress={() => {
+                                                    const enriched = enrichScore(item);
+                                                    // 如有情感字段，修正封面图
+                                                    if (item.emotion) {
+                                                        const cap = item.emotion.charAt(0).toUpperCase() + item.emotion.slice(1);
+                                                        enriched.coverImageName = `MoodMapView_${cap}`;
+                                                    }
+                                                    (navigation as any).navigate('SongDetail', { score: enriched });
+                                                }}
+                                                activeOpacity={0.7}
+                                            >
+                                                <Image source={props.imageName} style={styles.cardImage} />
+                                            </TouchableOpacity>
+                                            <View style={styles.cardMeta}>
+                                                <Image source={props.ellipseImage} style={styles.ellipseImage} />
+                                                <Text style={styles.cardTitle}>{item.title || 'Untitled'}</Text>
+                                                <Text style={styles.cardDate}>{props.date}</Text>
+                                            </View>
                                         </View>
-                                        <Text style={styles.cardDate}>{props.date}</Text>
-                                    </View>
-                                );
-                            }}
-                        />
+                                    );
+                                }}
+                            />
+                        </View>
                     )
                 ) : (
                     <View style={styles.placeholderContainer}>
@@ -116,6 +181,9 @@ const styles = StyleSheet.create({
     content: {
         flex: 1,
         paddingTop: 60, // Safe Area top
+    },
+    loadingIndicator: {
+        marginTop: 20,
     },
     header: {
         flexDirection: 'row',
@@ -138,16 +206,26 @@ const styles = StyleSheet.create({
         marginTop: 4,
         width: 30, // Small indicator under the active text
     },
+    listWrapper: {
+        position: 'absolute',
+        bottom: 0,
+        width: '100%',
+        height: '70%',
+    },
     listContainer: {
-        paddingHorizontal: 20,
-        paddingBottom: 100, // Space for Bottom Tab
+        paddingHorizontal: 18,
+        paddingBottom: 12,
     },
     row: {
         justifyContent: 'space-between',
-        marginBottom: 20,
+        marginBottom: 8,
     },
     cardContainer: {
-        width: (width - 60) / 2, // 2 columns with spacing
+        width: (width - 60) / 3, // 3 columns with spacing
+        alignItems: 'center',
+    },
+    cardTouchable: {
+        width: '100%',
         alignItems: 'center',
     },
     cardImage: {
@@ -155,22 +233,32 @@ const styles = StyleSheet.create({
         height: undefined,
         aspectRatio: 1, // Square images
         borderRadius: 20,
-        marginBottom: 10,
+        marginTop: 20,
+        marginBottom: 1,
+        transform: [{ scale: 1.3 }],
     },
-    cardTag: {
-        paddingHorizontal: 12,
-        paddingVertical: 5,
-        borderRadius: 15,
-        marginBottom: 5,
+    cardMeta: {
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingTop: 0,
+    },
+    ellipseImage: {
+        position: 'absolute',
+        width: 360,
+        height: 144,
+        resizeMode: 'contain',
+        opacity: 0.9,
+        transform: [{ translateY: -6 }],
     },
     cardTitle: {
-        color: 'white',
+        color: '#000',
         fontWeight: '600',
-        fontSize: 14,
+        fontSize: 10,
+        marginTop: 1,
     },
     cardDate: {
         color: '#666',
-        fontSize: 12,
+        fontSize: 10,
     },
     placeholderContainer: {
         flex: 1,

@@ -1,7 +1,7 @@
 import axios from 'axios';
 import { Platform } from 'react-native';
 
-const BASE_URL = Platform.OS === 'android' ? 'http://10.0.2.2:8000' : 'http://localhost:8000';
+const BASE_URL = Platform.OS === 'android' ? 'http://10.0.2.2:8000' : 'http://10.84.81.247:8000';
 
 export const api = axios.create({
     baseURL: BASE_URL,
@@ -66,11 +66,53 @@ export interface StaffScore {
     notes: StaffEmotionNote[];
 }
 
+import { StaffScore as UIStaffScore } from '../utils/StaffScoreToolkit';
+import { StaffEmotionCategory } from '../utils/StaffScoreToolkit';
+
+export interface ChatRecord {
+    id: string;
+    question: string;
+    userAnswer: string;
+    aiResponse: string;
+    emotions: StaffEmotionCategory[];
+    timestamp: number;
+}
+
+
+export interface TimeWindow {
+    startTime: Date;
+    endTime: Date;
+}
+
+export interface MusicSegmentInfo {
+    id: string;
+    timeWindow: TimeWindow;
+    eventText: string;
+    emotions: StaffEmotionCategory[];
+    audioFilePath: string;
+    duration: number; // In seconds
+}
+
 export interface Score {
     id?: string;
     title?: string;
-    staves: StaffScore[];
     createdAt?: string;
+
+    // --- 详情页/播放器所需扩展字段 ---
+    composerText?: string;
+    arrangerText?: string;
+    coverImageName?: string;
+
+    // 音乐播放片段数据
+    musicSegments?: MusicSegmentInfo[];
+
+    // 兼容后端原始 staves 结构
+    staves: StaffScore[];
+
+    // 前端 UI 渲染用的完整谱面对象 (兼容 MyNoteCreation)
+    staffScore?: {
+        staves: UIStaffScore[];
+    };
 }
 
 // --- API Service ---

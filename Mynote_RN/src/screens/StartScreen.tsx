@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, Image, ScrollView, TouchableOpacity, Dimensions } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
@@ -6,18 +6,34 @@ import { AuthStackParamList } from '../navigation/types';
 
 type StartScreenNavigationProp = StackNavigationProp<AuthStackParamList, 'Launch'>; // 'Launch' type works for general AuthStack nav
 
-const { width } = Dimensions.get('window');
+const { width, height: screenHeight } = Dimensions.get('window');
 
 const StartScreen = () => {
     const navigation = useNavigation<StartScreenNavigationProp>();
+    const [imageHeight, setImageHeight] = useState(screenHeight);
+
+    useEffect(() => {
+        // 获取图片的实际尺寸
+        Image.getSize(
+            Image.resolveAssetSource(require('../assets/images/StartViewBackground.png')).uri,
+            (imgWidth, imgHeight) => {
+                // 根据屏幕宽度计算应该显示的高度
+                const scaledHeight = (width / imgWidth) * imgHeight;
+                setImageHeight(scaledHeight);
+            },
+            (error) => {
+                console.log('Failed to get image size:', error);
+            }
+        );
+    }, []);
 
     return (
         <View style={styles.container}>
             <ScrollView contentContainerStyle={styles.scrollContent} bounces={false}>
                 <Image
-                    source={require('../assets/images/StartViewBackground.png')}
-                    style={styles.backgroundImage}
-                    resizeMode="cover" // iOS used 'fill', cover is close enough or 'stretch' if aspect ratio matches
+                    source={require('../assets/images/StartViewBackground.jpg')}
+                    style={[styles.backgroundImage, { height: imageHeight }]}
+                    resizeMode="cover"
                 />
 
                 <View style={styles.buttonContainer}>
@@ -25,7 +41,7 @@ const StartScreen = () => {
                         style={styles.button}
                         onPress={() => navigation.navigate('Login')}
                     >
-                        <Text style={styles.buttonText}>治愈之音，从 MyNote 开始</Text>
+                        <Text style={styles.buttonText}>Starting with MyNote</Text>
                     </TouchableOpacity>
                 </View>
             </ScrollView>
@@ -43,7 +59,7 @@ const styles = StyleSheet.create({
     },
     backgroundImage: {
         width: width,
-        height: width * 3, // Assuming long image, need to adjust based on actual aspect ratio or use AutoHeightImage
+        // 高度将通过动态计算设置
     },
     buttonContainer: {
         position: 'absolute',

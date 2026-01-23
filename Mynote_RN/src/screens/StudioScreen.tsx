@@ -1,119 +1,262 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, ImageBackground, TouchableOpacity, Dimensions, ActivityIndicator, Alert } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { musicApi, DailyMusicRequest } from '../services/api';
+import React, { useEffect, useState } from 'react';
+import { View, Text, StyleSheet, ImageBackground, SafeAreaView, KeyboardAvoidingView, Platform, Alert, ActivityIndicator, Modal, TouchableOpacity, Image, ScrollView } from 'react-native';
+import { StaffScoreToolkit, StaffScore } from '../utils/StaffScoreToolkit';
+import { createScoreFromStudio } from '../utils/ScoreUtils';
+import { Score } from '../services/api';
 
-const { width } = Dimensions.get('window');
+import { StaffView } from '../components/Studio/StaffView';
+import { StudioBottomBar } from '../components/Studio/StudioBottomBar';
+import { AIPopupView } from '../components/Studio/AIPopupView';
+import { AIResponseCardView } from '../components/Studio/AIResponseCardView';
+import { StudioView } from '../components/Studio/StudioView';
+import { StudioInstrumentSelectView } from '../components/Studio/StudioInstrumentSelectView';
+import { StudioFinishingView } from '../components/Studio/StudioFinishingView';
+import { StudioFinishedView } from '../components/Studio/StudioFinishedView';
+import { useStudioInputMode } from '../hooks/useStudioInputMode';
+import { useStudioChat } from '../hooks/useStudioChat';
+
+type StudioViewState = 'intro' | 'chat' | 'finishing' | 'finished';
 
 const StudioScreen = () => {
-    const [generating, setGenerating] = useState(false);
-    const [musicUrl, setMusicUrl] = useState<string | null>(null);
+    // Stage Control
+    const [viewState, setViewState] = useState<StudioViewState>('intro');
+    const [showInstrumentSheet, setShowInstrumentSheet] = useState(false);
 
-    const handleGenerate = async () => {
-        setGenerating(true);
-        try {
-            // Mock Data for Phase 4 Test
-            const dummyRequest: DailyMusicRequest = {
-                date: new Date().toISOString().split('T')[0],
-                emotions: [
-                    { emotion: "Joy", intensity: 0.8, time: "09:00", event: "Morning Run", hr: 120 }
-                ],
-                dailySummary: {
-                    dominantEmotion: "Joy",
-                    emotionDistribution: { "Joy": 1.0 },
-                    overallMood: "Energetic",
-                    avgHeartRate: 80,
-                    totalSteps: 5000
-                }
-            };
+    // Modal Visibility Control (derived from viewState for cleaner logic)
+    const showModal = viewState !== 'intro';
 
-            const res = await musicApi.generateDaily(dummyRequest);
-            if (res.code !== 0) throw new Error(res.message);
+    const [scores, setScores] = useState<StaffScore[]>([]);
+    const [finishedScore, setFinishedScore] = useState<Score | null>(null);
 
-            const taskId = res.data.taskId;
-            pollTask(taskId);
 
-        } catch (error: any) {
-            Alert.alert("Error", error.message || "Generation failed");
-            setGenerating(false);
+    const {
+        inputMode,
+        inputText,
+        setInputText,
+        enterTextInput,
+        enterVoiceOff,
+        startVoiceOn,
+        cancelVoiceOn,
+        endConversation,
+    } = useStudioInputMode();
+
+    const {
+        showAIChat,
+        showAIResponse,
+        isProcessing,
+        aiQuestion,
+        aiResponseText,
+        startConversation,
+        processUserInput,
+        nextRound,
+        generateDailyMusic,
+        conversationEnded,
+
+        chatHistory,
+        aiHealthDataText,
+    } = useStudioChat();
+
+
+    // Watch for conversation end (Manual trigger from hook if any, though we disabled auto-end)
+    useEffect(() => {
+        if (conversationEnded) {
+            handleEndConversation();
         }
+    }, [conversationEnded]);
+
+    // 1. Enter Studio Intro
+    const handleEnterIntro = () => {
+        setScores([]); // Reset scores
+        setViewState('chat');
+        // Delay to show instrument sheet
+        setTimeout(() => {
+            setShowInstrumentSheet(true);
+        }, 300);
     };
 
-    const pollTask = async (taskId: string) => {
-        const interval = setInterval(async () => {
-            try {
-                const res = await musicApi.queryTask(taskId);
-                const status = res.data.status;
+    // 2. Instrument Selected
+    const handleInstrumentSelect = () => {
+        setShowInstrumentSheet(false);
+        // Start conversation flow
+        startConversation();
+        // Switch to input mode
+        enterTextInput();
+    };
 
-                if (status === 'succeeded') {
-                    clearInterval(interval);
-                    setGenerating(false);
-                    setMusicUrl(res.data.musicUrl);
-                    Alert.alert("Success", "Music Generated! " + res.data.musicUrl);
-                } else if (status === 'failed') {
-                    clearInterval(interval);
-                    setGenerating(false);
-                    Alert.alert("Failed", "Generation failed on server.");
-                }
-                // else: continue polling
-            } catch (e) {
-                console.error("Polling error", e);
-                clearInterval(interval);
-                setGenerating(false);
-            }
-        }, 3000);
+    const handleSendText = async () => {
+        if (!inputText.trim()) return;
+
+        const userInput = inputText;
+        setInputText('');
+
+        // Process AI
+        const result = await processUserInput(userInput);
+
+        // Generate Staff
+        const newScore = StaffScoreToolkit.generateStaffForEvent(result.emotions);
+        setScores(prev => [...prev, newScore]);
+    };
+
+    const handleSendVoice = async () => {
+        cancelVoiceOn();
+        const mockVoiceText = "今天天气真好，心情很舒畅！";
+
+        const result = await processUserInput(mockVoiceText);
+        const newScore = StaffScoreToolkit.generateStaffForEvent(result.emotions);
+        setScores(prev => [...prev, newScore]);
+    };
+
+    // 3. Trigger Finishing Flow
+    const handleEndConversation = () => {
+        endConversation(); // Reset hook state
+        setViewState('finishing');
+    };
+
+    // 4. Finishing Animation Done -> Show Finished View
+    const handleFinishingDone = () => {
+        // Generate final score from tracking data
+        if (scores.length > 0) {
+            const finalScore = createScoreFromStudio(scores, chatHistory);
+            setFinishedScore(finalScore);
+            console.log("Generated Score:", finalScore.id, finalScore.title);
+        }
+        setViewState('finished');
+    };
+
+
+    // 5. Close / Remix
+    const handleClose = () => {
+        setViewState('intro');
+    };
+
+    // 6. Save
+    const handleSave = (title: string) => {
+        Alert.alert("Saved", `Song "${title}" has been saved!`);
+        handleClose();
     };
 
     return (
         <ImageBackground
-            source={require('../assets/images/StudioViewBackGround.png')}
+            source={require('../assets/images/StudioViewBack.png')}
             style={styles.container}
             resizeMode="cover"
         >
-            <SafeAreaView style={styles.content}>
-                {/* Header / Top Area */}
-                <View style={styles.header}>
-                    <Text style={styles.title}>Studio</Text>
-                    <Text style={styles.subtitle}>Create your melody</Text>
-                </View>
+            {/* 1. Static Entry View */}
+            {viewState === 'intro' && (
+                <StudioView onTap={handleEnterIntro} />
+            )}
 
-                {/* Staff Area Placeholder */}
-                <View style={styles.staffContainer}>
-                    <View style={styles.staffPlaceholder}>
-                        {generating ? (
-                            <View>
-                                <ActivityIndicator size="large" color="#333" />
-                                <Text style={styles.staffText}>Generating AI Music...</Text>
-                            </View>
-                        ) : (
-                            <View style={{ alignItems: 'center' }}>
-                                <Text style={styles.staffText}>Staff Visualization Area</Text>
-                                <TouchableOpacity style={styles.generateButton} onPress={handleGenerate}>
-                                    <Text style={styles.generateButtonText}>✨ Generate AI Music</Text>
+            {/* 2. Full Screen Modal Flow */}
+            <Modal
+                visible={showModal}
+                animationType="slide"
+                presentationStyle="fullScreen"
+                onRequestClose={handleClose}
+            >
+                {/* A. Chat View */}
+                {viewState === 'chat' && (
+                    <ImageBackground
+                        source={require('../assets/images/StudioViewBackGround.jpg')}
+                        style={styles.container}
+                        resizeMode="cover"
+                    >
+                        <SafeAreaView style={styles.safeArea}>
+                            {/* Top Bar */}
+                            <View style={styles.topBar}>
+                                <TouchableOpacity onPress={handleClose} style={styles.backButton}>
+                                    <Text style={{ fontSize: 28 }}>‹</Text>
                                 </TouchableOpacity>
-                                {musicUrl && <Text style={{ marginTop: 10, fontSize: 10 }}>{musicUrl}</Text>}
                             </View>
-                        )}
-                    </View>
-                </View>
 
-                {/* Bottom Bar Controls (Mock) */}
-                <View style={styles.bottomBar}>
-                    <TouchableOpacity style={styles.controlButton}>
-                        <View style={styles.micIcon} />
-                        <Text style={styles.controlText}>Mic</Text>
-                    </TouchableOpacity>
+                            {/* Content Layer */}
+                            <View style={styles.contentLayer}>
+                                <View style={styles.headerText}>
+                                    <Text style={styles.title}>Hi, Joy</Text>
+                                    <Text style={styles.title}>How are you today?</Text>
+                                    <Text style={styles.subtitle}>Don't worry, no matter what happens, {'\n'}you are the conductor of your life's song</Text>
+                                </View>
 
-                    <TouchableOpacity style={styles.recordButton}>
-                        <View style={styles.recordInner} />
-                    </TouchableOpacity>
+                                {/* Staff Area - Fixed height for 2 staves (140 * 2 = 280) + padding */}
+                                <View style={styles.staffContainer}>
+                                    <ScrollView
+                                        style={styles.staffScroll}
+                                        contentContainerStyle={styles.staffScrollContent}
+                                        showsVerticalScrollIndicator={true}
+                                    >
+                                        {scores.length > 0 ? (
+                                            scores.map((score) => (
+                                                <StaffView key={score.id} notes={score.notes} />
+                                            ))
+                                        ) : (
+                                            <View style={{ height: 140 }} />
+                                        )}
+                                        {isProcessing && <ActivityIndicator size="large" color="#6F8CF0" style={{ marginTop: 20 }} />}
+                                    </ScrollView>
+                                </View>
 
-                    <TouchableOpacity style={styles.controlButton}>
-                        <View style={styles.effectIcon} />
-                        <Text style={styles.controlText}>Effect</Text>
-                    </TouchableOpacity>
-                </View>
-            </SafeAreaView>
+                                {/* DoDo Image */}
+                                <Image
+                                    source={require('../assets/images/DoDo.png')}
+                                    style={styles.dodoImage}
+                                    resizeMode="contain"
+                                />
+                            </View>
+
+                            {/* Popup Layer (Z-Index handled by order) */}
+                            <AIPopupView
+                                message={aiQuestion}
+                                visible={showAIChat}
+                                healthDataText={aiHealthDataText}
+                            />
+                            <AIResponseCardView
+                                message={aiResponseText || ""}
+                                visible={showAIResponse}
+                                onContinue={nextRound}
+                            />
+
+                            {/* Bottom Bar */}
+                            <KeyboardAvoidingView
+                                behavior={Platform.OS === "ios" ? "padding" : "height"}
+                                keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 0}
+                                style={styles.bottomContainer}
+                            >
+                                <StudioBottomBar
+                                    inputMode={inputMode}
+                                    inputText={inputText}
+                                    onChangeText={setInputText}
+                                    onEnterTextInput={enterTextInput}
+                                    onEnterVoiceOff={enterVoiceOff}
+                                    onStartVoiceOn={startVoiceOn}
+                                    onCancelVoiceOn={cancelVoiceOn}
+                                    onSendText={handleSendText}
+                                    onSendVoice={handleSendVoice}
+                                    onEndConversation={handleEndConversation}
+                                />
+                            </KeyboardAvoidingView>
+
+                            {/* Instrument Sheet */}
+                            <StudioInstrumentSelectView
+                                visible={showInstrumentSheet}
+                                onSelect={handleInstrumentSelect}
+                            />
+                        </SafeAreaView>
+                    </ImageBackground>
+                )}
+
+                {/* B. Finishing View */}
+                {viewState === 'finishing' && (
+                    <StudioFinishingView onFinish={handleFinishingDone} />
+                )}
+
+                {/* C. Finished View */}
+                {viewState === 'finished' && (
+                    <StudioFinishedView
+                        score={finishedScore}
+                        onClose={handleClose}
+                        onSave={handleSave}
+                    />
+                )}
+            </Modal>
         </ImageBackground>
     );
 };
@@ -122,109 +265,79 @@ const styles = StyleSheet.create({
     container: {
         flex: 1,
     },
-    content: {
+    safeArea: {
         flex: 1,
-        justifyContent: 'space-between',
     },
-    header: {
-        paddingTop: 20,
+    topBar: {
         paddingHorizontal: 20,
+        paddingTop: 10,
+        zIndex: 10,
+    },
+    backButton: {
+        width: 40,
+        height: 40,
+        borderRadius: 20,
+        backgroundColor: 'rgba(255,255,255,0.8)',
+        justifyContent: 'center',
         alignItems: 'center',
+    },
+    contentLayer: {
+        flex: 1,
+        zIndex: 1,
+    },
+    contentContainer: {
+        flexGrow: 1,
+        paddingBottom: 100, // Space for bottom bar
+    },
+    headerText: {
+        paddingHorizontal: 30,
+        marginTop: 20,
     },
     title: {
         fontSize: 28,
         fontWeight: 'bold',
         color: '#333',
+        lineHeight: 40,
     },
     subtitle: {
         fontSize: 16,
         color: '#666',
-        marginTop: 5,
+        marginTop: 10,
+        lineHeight: 24,
     },
     staffContainer: {
-        flex: 1,
-        justifyContent: 'center',
-        alignItems: 'center',
-        paddingHorizontal: 20,
-    },
-    staffPlaceholder: {
+        marginTop: 20,
+        height: 280, // Fixed height for approx 2 staves
         width: '100%',
-        height: 200,
-        backgroundColor: 'rgba(255,255,255,0.5)',
-        borderRadius: 20,
-        justifyContent: 'center',
-        alignItems: 'center',
-        borderWidth: 2,
-        borderColor: 'rgba(255,255,255,0.8)',
-        borderStyle: 'dashed',
     },
-    staffText: {
-        color: '#333',
-        fontSize: 18,
-        fontWeight: '600',
+    staffScroll: {
+        flex: 1,
     },
-    bottomBar: {
-        flexDirection: 'row',
-        justifyContent: 'space-around',
+    staffScrollContent: {
         alignItems: 'center',
         paddingBottom: 20,
-        paddingHorizontal: 30,
-        height: 100,
-        backgroundColor: 'rgba(255,255,255,0.3)',
-        borderTopLeftRadius: 30,
-        borderTopRightRadius: 30,
     },
-    controlButton: {
+    staffArea: {
+        // Deprecated, replaced by staffContainer
+        marginTop: 30,
         alignItems: 'center',
+        minHeight: 150,
     },
-    controlText: {
-        marginTop: 5,
-        color: '#333',
-        fontWeight: '500',
+    dodoImage: {
+        width: 160,
+        height: 160,
+        alignSelf: 'center',
+        marginTop: 'auto', // Push to bottom
+        marginBottom: 80, // Space for bottom bar
     },
-    micIcon: {
-        width: 24,
-        height: 24,
-        backgroundColor: '#333',
-        borderRadius: 12,
-    },
-    effectIcon: {
-        width: 24,
-        height: 24,
-        backgroundColor: '#333',
-        borderRadius: 4,
-    },
-    recordButton: {
-        width: 70,
-        height: 70,
-        borderRadius: 35,
-        backgroundColor: 'white',
-        borderWidth: 5,
-        borderColor: '#ddd',
-        justifyContent: 'center',
+    bottomContainer: {
+        position: 'absolute',
+        bottom: 0,
+        left: 0,
+        right: 0,
+        paddingBottom: 40,
         alignItems: 'center',
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.2,
-        shadowRadius: 5,
-        elevation: 5,
-    },
-    recordInner: {
-        width: 50,
-        height: 50,
-        borderRadius: 25,
-        backgroundColor: '#FF4444',
-    },
-    generateButton: {
-        marginTop: 20,
-        backgroundColor: '#6F8CF0',
-        paddingHorizontal: 20,
-        paddingVertical: 10,
-        borderRadius: 20,
-    },
-    generateButtonText: {
-        color: 'white',
-        fontWeight: 'bold',
+        zIndex: 200, // Highest
     }
 });
 

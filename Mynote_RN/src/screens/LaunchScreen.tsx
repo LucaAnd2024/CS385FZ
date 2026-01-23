@@ -20,7 +20,7 @@ const LaunchScreen = () => {
 
                 <View style={styles.logoContainer}>
                     {/* Fallback to text if logo image is missing/SVG */}
-                    <Text style={styles.logoText}>MyNote</Text>
+                    <Text style={styles.logoText}></Text>
                     {/* <Image source={require('../assets/images/mynote_logo.png')} /> */}
                 </View>
 
@@ -28,7 +28,7 @@ const LaunchScreen = () => {
                     style={styles.button}
                     onPress={() => navigation.navigate('Start')}
                 >
-                    <Text style={styles.buttonText}>治愈之音，从 MyNote 开始</Text>
+                    <Text style={styles.buttonText}>Starting with MyNote</Text>
                 </TouchableOpacity>
             </View>
         </ImageBackground>

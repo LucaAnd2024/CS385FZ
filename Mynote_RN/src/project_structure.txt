@@ -1,0 +1,38 @@
+.
+├── assets
+│   ├── icons
+│   └── images
+├── components
+│   ├── AppleIcon.tsx
+│   ├── EyeIcon.tsx
+│   ├── GoogleIcon.tsx
+│   └── Studio
+├── hooks
+│   ├── useStudioChat.ts
+│   └── useStudioInputMode.ts
+├── navigation
+│   ├── RootNavigator.tsx
+│   └── types.ts
+├── project_structure.txt
+├── screens
+│   ├── AuthScreen.tsx
+│   ├── CollectionScreen.tsx
+│   ├── DummyScreens.tsx
+│   ├── HomeScreen.tsx
+│   ├── LaunchScreen.tsx
+│   ├── SongDetailScreen.tsx
+│   ├── StartScreen.tsx
+│   └── StudioScreen.tsx
+├── services
+│   └── api.ts
+├── store
+│   └── AuthContext.tsx
+├── types
+│   └── svg.d.ts
+└── utils
+    ├── DemoConversationData.ts
+    ├── ScoreUtils.ts
+    ├── StaffAssets.ts
+    └── StaffScoreToolkit.ts
+
+13 directories, 23 files

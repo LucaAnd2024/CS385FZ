@@ -1,6 +1,10 @@
+import { Score } from '../services/api';
+
 export type RootStackParamList = {
     Auth: undefined;
     Main: undefined;
+    SongDetail: { score: Score };
+    CollectionDetail: undefined;
 };
 
 export type AuthStackParamList = {

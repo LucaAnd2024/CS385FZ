@@ -1,157 +1,271 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ImageBackground, Image, ScrollView, Dimensions, TouchableOpacity } from 'react-native';
-import { coreApi, EmotionDayData } from '../services/api';
+import React, { useState, useEffect, useRef } from 'react';
+import { View, Image, StyleSheet, ScrollView, Dimensions, TouchableOpacity, Text, ImageBackground, NativeSyntheticEvent, NativeScrollEvent } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
+import { StackNavigationProp } from '@react-navigation/stack';
+import { RootStackParamList } from '../navigation/types';
+import { useCollectionData } from '../hooks/useCollectionData';
+import NoteGroup from '../components/Collection/NoteGroup';
+import DialogBox from '../components/Collection/DialogBox';
+import VisibilityDetector from '../components/Collection/VisibilityDetector';
 
-const { width, height } = Dimensions.get('window');
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+
+// Asset imports
+const BG_IMAGE = require('../assets/images/CollectionRoomViewBack.jpg');
+const NO_DATA_POP = require('../assets/images/CollectionRoomView_NoDataPop.png');
+const BEGIN_BTN = require('../assets/images/CollectionRoomViewBegin.png');
+
+// --- Configuration ---
+
+// These percentages are relative to the LONG background image height
+// We will calculate the actual pixel values after loading the image size.
+const GROUP_POSITIONS = [
+    // Group 1: 7-6 days ago (Original Pink)
+    {
+        notePositions: [
+            { x: 0.12, y: 0.24, scale: 0.16 },
+            { x: 0.28, y: 0.28, scale: 0.08 }
+        ],
+        detectorY: 0.26,
+        dialogPos: { x: 0.62, y: 0.26 }
+    },
+    // Group 2: 5-4 days ago (Original Green)
+    {
+        notePositions: [
+            { x: 0.82, y: 0.36, scale: 0.18 },
+            { x: 0.62, y: 0.44, scale: 0.18 }
+        ],
+        detectorY: 0.40,
+        dialogPos: { x: 0.25, y: 0.40 } // Dialog on left
+    },
+    // Group 3: Pre-Yesterday/Yesterday (Original Blue)
+    {
+        notePositions: [
+            { x: 0.14, y: 0.48, scale: 0.10 },
+            { x: 0.10, y: 0.54, scale: 0.14 },
+            { x: 0.22, y: 0.60, scale: 0.18 }
+        ],
+        detectorY: 0.54,
+        dialogPos: { x: 0.60, y: 0.54 } // Dialog on right
+    },
+    // Group 4: Today (Original Yellow)
+    {
+        notePositions: [
+            { x: 0.88, y: 0.64, scale: 0.12 },
+            { x: 0.78, y: 0.70, scale: 0.12 },
+            { x: 0.62, y: 0.73, scale: 0.16 }
+        ],
+        detectorY: 0.69,
+        dialogPos: { x: 0.28, y: 0.69 } // Dialog on left
+    }
+];
+
+// --- Component ---
 
 const CollectionScreen = () => {
-    // State to simulate data status (Phase 3: No Data initially)
-    const [days, setDays] = useState<EmotionDayData[]>([]);
-    const [loading, setLoading] = useState(true);
+    const navigation = useNavigation<StackNavigationProp<RootStackParamList>>();
+    const { dayGroups, scores, loading, refresh } = useCollectionData();
 
+    // Layout State
+    const [bgHeight, setBgHeight] = useState(SCREEN_HEIGHT * 2); // Default estimate
+    const [scrollY, setScrollY] = useState(0);
+    const scrollViewRef = useRef<ScrollView>(null);
+
+    // Interaction State
+    const [visibleGroups, setVisibleGroups] = useState<Set<string>>(new Set());
+    const [hideDialogs, setHideDialogs] = useState<Set<string>>(new Set()); // Manually hidden
+
+    // Load BG Image Size
     useEffect(() => {
-        loadData();
+        const imageSource = Image.resolveAssetSource(BG_IMAGE);
+        if (imageSource) {
+            const ratio = imageSource.height / imageSource.width;
+            setBgHeight(SCREEN_WIDTH * ratio);
+        }
     }, []);
 
-    const loadData = async () => {
-        try {
-            const data = await coreApi.getEmotionDays();
-            if (Array.isArray(data)) {
-                setDays(data);
-            }
-        } catch (e) {
-            console.error(e);
-        } finally {
-            setLoading(false);
+    // Scroll Handler
+    const handleScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+        setScrollY(event.nativeEvent.contentOffset.y);
+    };
+
+    // Toggle Dialog Logic
+    const toggleDialog = (groupName: string) => {
+        if (visibleGroups.has(groupName)) {
+            // If visible, hide it manually
+            // Actually, the requirement says "Click to show/hide".
+            // If visibility logic is automatic, clicking should toggle manual override?
+            // Simple version: Toggle "hideDialogs" set.
+            setHideDialogs(prev => {
+                const next = new Set(prev);
+                if (next.has(groupName)) next.delete(groupName);
+                else next.add(groupName);
+                return next;
+            });
         }
     };
 
-    const hasData = days.length > 0;
+    // Check if we have any data at all
+    const hasData = scores.length > 0;
+
+    // Date Range Text
+    const getDateRangeText = () => {
+        const today = new Date();
+        const weekAgo = new Date(today);
+        weekAgo.setDate(today.getDate() - 6);
+        const fmt = (d: Date) => `${d.getFullYear()}.${d.getMonth() + 1}.${d.getDate()}`;
+        // return `记录自${fmt(weekAgo)}\n至${fmt(today)}`;
+        return ``;
+    };
 
     return (
-        <ImageBackground
-            source={require('../assets/images/CollectionRoomViewBack.png')}
-            style={styles.container}
-            resizeMode="cover"
-        >
+        <View style={styles.container}>
             <ScrollView
-                contentContainerStyle={styles.scrollContent}
+                ref={scrollViewRef}
+                style={styles.scrollView}
+                contentContainerStyle={{ height: bgHeight }}
                 showsVerticalScrollIndicator={false}
+                scrollEventThrottle={16} // 60fpsish
+                onScroll={handleScroll}
+                bounces={false}
             >
-                {/* Content Area - Simulating the vertical Timeline */}
-                {/* Content Area - Simulating the vertical Timeline */}
-                <View style={styles.timelineContainer}>
-                    <View style={styles.timelineLine} />
+                {/* 1. Background Image */}
+                <ImageBackground
+                    source={BG_IMAGE}
+                    style={{ width: SCREEN_WIDTH, height: bgHeight }}
+                    resizeMode="cover"
+                >
+                    {/* 2. Date Text */}
+                    <Text style={[styles.dateText, { top: bgHeight * 0.165, left: SCREEN_WIDTH * 0.48 }]}>
+                        {getDateRangeText()}
+                    </Text>
 
-                    {/* Render Days */}
-                    {days.map((day, index) => (
-                        <View key={day.date || index} style={styles.dayRow}>
-                            <View style={styles.dayNode} />
-                            <View style={styles.dayCard}>
-                                <Text style={styles.dayDate}>{day.date}</Text>
-                                <Text style={styles.dayMood}>{day.dailySummary?.overallMood || 'Recorded'}</Text>
-                            </View>
+                    {/* 3. Render Groups (Only if we have data) */}
+                    {hasData && GROUP_POSITIONS.map((config, index) => {
+                        const groupData = dayGroups.find(g => g.groupIndex === index);
+                        if (!groupData) return null; // Should not happen if utils logic is correct
+
+                        const groupName = groupData.groupName;
+                        const isVisible = visibleGroups.has(groupName) && !hideDialogs.has(groupName);
+
+                        return (
+                            <React.Fragment key={`group-wrapper-${index}`}>
+                                {/* Note Icons - Temporarily Commented Out */}
+                                {/* <NoteGroup
+                                    group={groupData}
+                                    positions={config.notePositions}
+                                    containerWidth={SCREEN_WIDTH}
+                                    containerHeight={bgHeight}
+                                    onToggleDialog={toggleDialog}
+                                /> */}
+
+                                {/* Visibility Detector Logic */}
+                                <VisibilityDetector
+                                    scrollY={scrollY}
+                                    viewportHeight={SCREEN_HEIGHT}
+                                    targetY={bgHeight * config.detectorY}
+                                    onVisibilityChange={(visible) => {
+                                        setVisibleGroups(prev => {
+                                            const next = new Set(prev);
+                                            if (visible) next.add(groupName);
+                                            else next.delete(groupName);
+                                            return next;
+                                        });
+                                    }}
+                                />
+
+                                {/* Dialog Box */}
+                                {isVisible && (
+                                    <DialogBox
+                                        text={groupData.aiSummary || "点击查看详情"}
+                                        position={config.dialogPos}
+                                        containerWidth={SCREEN_WIDTH}
+                                        containerHeight={bgHeight}
+                                        alignment={config.dialogPos.x > 0.5 ? 'right' : 'left'}
+                                    />
+                                )}
+                            </React.Fragment>
+                        );
+                    })}
+
+                    {/* 4. Placeholder Icons if NO DATA - Temporarily Commented Out */}
+                    {/* {!hasData && GROUP_POSITIONS.map((config, index) => (
+                        <NoteGroup
+                            key={`dummy-group-${index}`}
+                            group={{
+                                id: `dummy-${index}`,
+                                groupIndex: index,
+                                groupName: `group${index + 1}`,
+                                dayRange: [],
+                                creations: [],
+                                dominantEmotion: 0, // Joy
+                                emotionDistribution: {},
+                                noteIcons: ['Staff_Joy_1', 'Staff_Joy_2'].slice(0, Math.min(2, config.notePositions.length)),
+                                aiSummary: '',
+                                summaryGeneratedAt: new Date()
+                            }}
+                            positions={config.notePositions.slice(0, 2)}
+                            containerWidth={SCREEN_WIDTH}
+                            containerHeight={bgHeight}
+                            onToggleDialog={() => { }}
+                        />
+                    ))} */}
+
+
+                    {/* 5. Begin Button */}
+                    <TouchableOpacity
+                        style={[styles.beginButton, { top: bgHeight * 0.89, left: SCREEN_WIDTH * 0.82 }]}
+                        onPress={() => navigation.navigate('CollectionDetail')}
+                    >
+                        <Image source={BEGIN_BTN} style={styles.beginImage} />
+                    </TouchableOpacity>
+
+                    {/* 6. No Data Popup (Aligned to Begin Button logic) */}
+                    {!hasData && (
+                        <View style={[styles.noDataPopup, { top: bgHeight * 0.89 - (SCREEN_WIDTH * 0.77 * 0.4) - 20 }]}>
+                            {/* <Image
+                                source={NO_DATA_POP}
+                                style={{ width: SCREEN_WIDTH * 0.77, height: SCREEN_WIDTH * 0.77 * 0.4 }} // Aspect ratio estimate
+                                resizeMode="contain"
+                            /> */}
                         </View>
-                    ))}
+                    )}
 
-                    {/* "Begin" Node Logic */}
-                    <View style={styles.beginContainer}>
-                        <Image
-                            source={require('../assets/images/CollectionRoomViewBegin.png')}
-                            style={styles.beginImage}
-                            resizeMode="contain"
-                        />
-                    </View>
-                </View>
-
-                {/* No Data Popup Overlay */}
-                {!hasData && (
-                    <View style={styles.popupContainer}>
-                        <Image
-                            source={require('../assets/images/CollectionRoomView_NoDataPop.png')}
-                            style={styles.popupImage}
-                            resizeMode="contain"
-                        />
-                    </View>
-                )}
+                </ImageBackground>
             </ScrollView>
-        </ImageBackground>
+        </View>
     );
 };
 
 const styles = StyleSheet.create({
     container: {
         flex: 1,
+        backgroundColor: '#fff',
     },
-    scrollContent: {
-        flexGrow: 1,
-        minHeight: height * 1.2, // Allow scrolling effect
-        paddingBottom: 100,
-    },
-    timelineContainer: {
+    scrollView: {
         flex: 1,
-        alignItems: 'center',
-        paddingTop: 100,
     },
-    timelineLine: {
+    dateText: {
         position: 'absolute',
-        top: 0,
-        bottom: 0,
-        width: 2,
-        backgroundColor: 'rgba(255,255,255,0.3)',
+        fontSize: 15, // Adjusted from Swift 15.4
+        fontWeight: '500',
+        color: 'rgba(0,0,0,0.85)',
+        lineHeight: 20,
     },
-    beginContainer: {
-        marginTop: 50, // Space between items and Begin
-        alignItems: 'center',
+    beginButton: {
+        position: 'absolute',
+        transform: [{ translateX: -80 }, { translateY: -60 }] // Left 40, Up 40
     },
     beginImage: {
-        width: width * 0.25,
-        height: width * 0.25,
+        width: SCREEN_WIDTH * 0.48, // Double from 0.24
+        height: SCREEN_WIDTH * 0.48 * 0.4,
+        resizeMode: 'contain'
     },
-    dayRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        marginBottom: 40,
-        width: '100%',
-        paddingHorizontal: 40,
-    },
-    dayNode: {
-        width: 16,
-        height: 16,
-        borderRadius: 8,
-        backgroundColor: '#fff',
+    noDataPopup: {
         position: 'absolute',
-        left: (width / 2) - 8, // Center on the line
-        zIndex: 1,
-    },
-    dayCard: {
-        backgroundColor: 'rgba(255,255,255,0.2)',
-        padding: 15,
-        borderRadius: 12,
-        marginLeft: (width / 2) + 20, // Offset to right
-        minWidth: 120,
-    },
-    dayDate: {
-        color: 'white',
-        fontWeight: 'bold',
-        fontSize: 16,
-    },
-    dayMood: {
-        color: '#eee',
-        fontSize: 12,
-        marginTop: 4,
-    },
-    popupContainer: {
-        position: 'absolute',
-        bottom: height * 0.15,
-        left: 0,
-        right: 0,
+        left: (SCREEN_WIDTH - (SCREEN_WIDTH * 0.77)) / 2, // Center horizontally
         alignItems: 'center',
-    },
-    popupImage: {
-        width: width * 0.77,
-        height: undefined,
-        aspectRatio: 2.5, // Adjust based on actual image
+        zIndex: 1000,
     }
 });
 
